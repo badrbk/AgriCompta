@@ -1,0 +1,697 @@
+// Prisma Schema - Application de Gestion Comptable Agricole
+// Fuseau horaire : Africa/Casablanca | Devise : MAD
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  ASSOCIATE
+  ACCOUNTANT
+  OBSERVER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum AccountType {
+  ASSET
+  STOCK
+  EXPENSE
+  REVENUE
+}
+
+enum TransactionType {
+  CAPITAL_ACQUISITION
+  EXPENSE
+  SALE
+  STOCK_IN
+  STOCK_OUT
+  CAPITAL_CONTRIBUTION
+  DISTRIBUTION
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  CREDIT
+}
+
+enum AssetCategory {
+  LAND
+  BUILDING
+  EQUIPMENT
+  VEHICLE
+  LIVESTOCK
+  INSTALLATION
+}
+
+enum DepreciationMethod {
+  LINEAR
+  DECLINING
+  NONE
+}
+
+enum AssetStatus {
+  ACTIVE
+  SOLD
+  SCRAPPED
+}
+
+enum StockCategory {
+  HARVEST
+  LIVESTOCK
+  CONSUMABLE
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockMovementSource {
+  HARVEST
+  PURCHASE
+  SALE
+  LOSS
+  CONSUMPTION
+}
+
+enum LivestockType {
+  BREEDING
+  FATTENING
+}
+
+enum LivestockStatus {
+  ACTIVE
+  SOLD
+  CLOSED
+}
+
+enum LivestockMovementType {
+  BIRTH
+  PURCHASE
+  SALE
+  DEATH
+  TRANSFER
+}
+
+enum LivestockExpenseType {
+  FEED
+  VETERINARY
+  LABOR
+  OTHER
+}
+
+enum AreaUnit {
+  HA
+  M2
+}
+
+enum IrrigationType {
+  DRIP
+  SPRINKLER
+  FLOOD
+  RAIN_FED
+}
+
+enum CropStatus {
+  PLANNED
+  PLANTED
+  GROWING
+  HARVESTED
+  FAILED
+}
+
+enum CropExpenseType {
+  SEED
+  FERTILIZER
+  PESTICIDE
+  IRRIGATION
+  LABOR
+  OTHER
+}
+
+enum HarvestUnit {
+  KG
+  TON
+  QUINTAL
+}
+
+enum QualityGrade {
+  A
+  B
+  C
+}
+
+enum HarvestDestination {
+  STOCK
+  DIRECT_SALE
+  LOSS
+}
+
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+}
+
+enum CashAccountType {
+  CASH
+  BANK
+  MOBILE_MONEY
+}
+
+enum CashFlowType {
+  IN
+  OUT
+}
+
+enum ClosureStatus {
+  DRAFT
+  VALIDATED
+  DISTRIBUTED
+}
+
+enum DistributionMethod {
+  CASH
+  REINVEST
+  MIXED
+}
+
+enum DistributionPaymentStatus {
+  PENDING
+  PAID
+}
+
+// ============================================================
+// MODÈLES
+// ============================================================
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole  @default(ASSOCIATE)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLogin    DateTime?
+
+  // Relations
+  associates        Associate[]
+  createdTransactions Transaction[] @relation("CreatedByUser")
+  paidTransactions    Transaction[] @relation("PaidByAssociate")
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  name            String
+  description     String?
+  startDate       DateTime
+  status          ProjectStatus @default(ACTIVE)
+  currency        String        @default("MAD")
+  fiscalYearStart Int           @default(1)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  associates    Associate[]
+  transactions  Transaction[]
+  assets        Asset[]
+  stocks        StockItem[]
+  livestock     LivestockGroup[]
+  plots         Plot[]
+  crops         Crop[]
+  customers     Customer[]
+  sales         Sale[]
+  cashAccounts  CashAccount[]
+  closures      SeasonClosure[]
+
+  @@index([status])
+  @@map("projects")
+}
+
+model Associate {
+  id                    String   @id @default(cuid())
+  projectId             String
+  userId                String
+  participationPercentage Float
+  initialContribution   Float    @default(0)
+  joinDate              DateTime @default(now())
+  isActive              Boolean  @default(true)
+
+  // Relations
+  project              Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                 User                 @relation(fields: [userId], references: [id])
+  profitDistributions  ProfitDistribution[]
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("associates")
+}
+
+model Account {
+  id             String      @id @default(cuid())
+  code           String      @unique
+  name           String
+  classCode      String
+  type           AccountType
+  parentAccountId String?
+  isActive       Boolean     @default(true)
+
+  // Relations
+  parent       Account?      @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  children     Account[]     @relation("AccountHierarchy")
+  transactions Transaction[]
+  assets       Asset[]
+  stocks       StockItem[]
+
+  @@index([classCode])
+  @@index([type])
+  @@index([parentAccountId])
+  @@map("accounts")
+}
+
+model Transaction {
+  id                  String          @id @default(cuid())
+  projectId           String
+  accountId           String
+  date                DateTime
+  type                TransactionType
+  amount              Float
+  quantity            Float?
+  unit                String?
+  description         String
+  paymentMethod       PaymentMethod   @default(CASH)
+  documentReference   String?
+  attachmentUrl       String?
+  paidByAssociateId   String?
+  createdByUserId     String
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // Relations
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account       Account      @relation(fields: [accountId], references: [id])
+  createdBy     User         @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  paidBy        User?        @relation("PaidByAssociate", fields: [paidByAssociateId], references: [id])
+  cashFlows     CashFlow[]
+  cropExpenses  CropExpense[]
+
+  @@index([projectId])
+  @@index([date])
+  @@index([type])
+  @@index([accountId])
+  @@index([createdByUserId])
+  @@map("transactions")
+}
+
+model Asset {
+  id                String             @id @default(cuid())
+  projectId         String
+  accountId         String
+  name              String
+  category          AssetCategory
+  acquisitionDate   DateTime
+  acquisitionValue  Float
+  depreciationMethod DepreciationMethod @default(LINEAR)
+  usefulLifeYears   Int?
+  residualValue     Float?
+  currentValue      Float
+  status            AssetStatus        @default(ACTIVE)
+  location          String?
+  serialNumber      String?
+  notes             String?
+
+  // Relations
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account       Account       @relation(fields: [accountId], references: [id])
+  depreciations Depreciation[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([category])
+  @@map("assets")
+}
+
+model Depreciation {
+  id                      String @id @default(cuid())
+  assetId                 String
+  year                    Int
+  annualDepreciation      Float
+  accumulatedDepreciation Float
+  bookValue               Float
+
+  // Relations
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, year])
+  @@index([assetId])
+  @@map("depreciations")
+}
+
+model StockItem {
+  id               String        @id @default(cuid())
+  projectId        String
+  accountId        String
+  name             String
+  category         StockCategory
+  currentQuantity  Float         @default(0)
+  unit             String
+  unitValue        Float         @default(0)
+  totalValue       Float         @default(0)
+  minimumThreshold Float?
+  location         String?
+  expiryDate       DateTime?
+
+  // Relations
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account   Account         @relation(fields: [accountId], references: [id])
+  movements StockMovement[]
+  saleLines SaleLine[]
+
+  @@index([projectId])
+  @@index([category])
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id          String              @id @default(cuid())
+  stockItemId String
+  date        DateTime
+  type        StockMovementType
+  source      StockMovementSource
+  quantity    Float
+  unitCost    Float?
+  referenceId String?
+  notes       String?
+
+  // Relations
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@index([stockItemId])
+  @@index([date])
+  @@index([type])
+  @@map("stock_movements")
+}
+
+model LivestockGroup {
+  id             String          @id @default(cuid())
+  projectId      String
+  type           LivestockType
+  species        String
+  breed          String?
+  initialCount   Int
+  currentCount   Int
+  averageWeight  Float?
+  unitValue      Float
+  acquisitionDate DateTime
+  status         LivestockStatus @default(ACTIVE)
+
+  // Relations
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  movements LivestockMovement[]
+  expenses  LivestockExpense[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([species])
+  @@map("livestock_groups")
+}
+
+model LivestockMovement {
+  id               String                @id @default(cuid())
+  livestockGroupId String
+  date             DateTime
+  type             LivestockMovementType
+  quantity         Int
+  unitPrice        Float?
+  totalValue       Float?
+  weight           Float?
+  reason           String?
+  notes            String?
+
+  // Relations
+  livestockGroup LivestockGroup @relation(fields: [livestockGroupId], references: [id], onDelete: Cascade)
+
+  @@index([livestockGroupId])
+  @@index([date])
+  @@index([type])
+  @@map("livestock_movements")
+}
+
+model LivestockExpense {
+  id               String               @id @default(cuid())
+  livestockGroupId String
+  date             DateTime
+  type             LivestockExpenseType
+  amount           Float
+  description      String
+
+  // Relations
+  livestockGroup LivestockGroup @relation(fields: [livestockGroupId], references: [id], onDelete: Cascade)
+
+  @@index([livestockGroupId])
+  @@index([date])
+  @@map("livestock_expenses")
+}
+
+model Plot {
+  id            String        @id @default(cuid())
+  projectId     String
+  name          String
+  area          Float
+  areaUnit      AreaUnit      @default(HA)
+  location      String?
+  soilType      String?
+  irrigationType IrrigationType @default(RAIN_FED)
+  isActive      Boolean       @default(true)
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  crops   Crop[]
+
+  @@index([projectId])
+  @@map("plots")
+}
+
+model Crop {
+  id                  String     @id @default(cuid())
+  projectId           String
+  plotId              String
+  cropType            String
+  variety             String?
+  plantingDate        DateTime
+  expectedHarvestDate DateTime?
+  actualHarvestDate   DateTime?
+  areaPlanted         Float
+  status              CropStatus @default(PLANNED)
+
+  // Relations
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  plot     Plot          @relation(fields: [plotId], references: [id])
+  expenses CropExpense[]
+  harvests Harvest[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([plotId])
+  @@map("crops")
+}
+
+model CropExpense {
+  id            String          @id @default(cuid())
+  cropId        String
+  transactionId String?
+  expenseType   CropExpenseType
+  amount        Float
+  date          DateTime
+
+  // Relations
+  crop        Crop         @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([cropId])
+  @@index([date])
+  @@map("crop_expenses")
+}
+
+model Harvest {
+  id           String             @id @default(cuid())
+  cropId       String
+  date         DateTime
+  quantity     Float
+  unit         HarvestUnit        @default(KG)
+  qualityGrade QualityGrade       @default(A)
+  destination  HarvestDestination @default(STOCK)
+  notes        String?
+
+  // Relations
+  crop Crop @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@index([cropId])
+  @@index([date])
+  @@map("harvests")
+}
+
+model Customer {
+  id           String       @id @default(cuid())
+  projectId    String
+  name         String
+  type         CustomerType @default(INDIVIDUAL)
+  phone        String?
+  email        String?
+  address      String?
+  paymentTerms String?
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sales   Sale[]
+
+  @@index([projectId])
+  @@map("customers")
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  projectId     String
+  customerId    String?
+  saleDate      DateTime
+  paymentStatus PaymentStatus @default(UNPAID)
+  paymentMethod PaymentMethod @default(CASH)
+  totalAmount   Float
+  paidAmount    Float         @default(0)
+  notes         String?
+
+  // Relations
+  project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customer Customer?  @relation(fields: [customerId], references: [id])
+  lines    SaleLine[]
+
+  @@index([projectId])
+  @@index([saleDate])
+  @@index([paymentStatus])
+  @@map("sales")
+}
+
+model SaleLine {
+  id          String  @id @default(cuid())
+  saleId      String
+  stockItemId String?
+  productName String
+  quantity    Float
+  unit        String
+  unitPrice   Float
+  totalPrice  Float
+
+  // Relations
+  sale      Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  stockItem StockItem? @relation(fields: [stockItemId], references: [id])
+
+  @@index([saleId])
+  @@map("sale_lines")
+}
+
+model CashAccount {
+  id        String          @id @default(cuid())
+  projectId String
+  name      String
+  type      CashAccountType @default(CASH)
+  balance   Float           @default(0)
+  currency  String          @default("MAD")
+  isActive  Boolean         @default(true)
+
+  // Relations
+  project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  flows   CashFlow[]
+
+  @@index([projectId])
+  @@map("cash_accounts")
+}
+
+model CashFlow {
+  id            String       @id @default(cuid())
+  transactionId String?
+  cashAccountId String
+  date          DateTime
+  type          CashFlowType
+  amount        Float
+  balanceAfter  Float
+
+  // Relations
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  cashAccount CashAccount  @relation(fields: [cashAccountId], references: [id], onDelete: Cascade)
+
+  @@index([cashAccountId])
+  @@index([date])
+  @@map("cash_flows")
+}
+
+model SeasonClosure {
+  id            String        @id @default(cuid())
+  projectId     String
+  closureDate   DateTime
+  seasonName    String
+  totalRevenue  Float         @default(0)
+  totalExpenses Float         @default(0)
+  depreciation  Float         @default(0)
+  netProfit     Float         @default(0)
+  status        ClosureStatus @default(DRAFT)
+  notes         String?
+
+  // Relations
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  distributions ProfitDistribution[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("season_closures")
+}
+
+model ProfitDistribution {
+  id                 String                    @id @default(cuid())
+  closureId          String
+  associateId        String
+  sharePercentage    Float
+  profitShare        Float
+  distributionMethod DistributionMethod        @default(CASH)
+  cashAmount         Float?
+  reinvestAmount     Float?
+  paymentDate        DateTime?
+  paymentStatus      DistributionPaymentStatus @default(PENDING)
+
+  // Relations
+  closure   SeasonClosure @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  associate Associate     @relation(fields: [associateId], references: [id])
+
+  @@index([closureId])
+  @@index([associateId])
+  @@map("profit_distributions")
+}
