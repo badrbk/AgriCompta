@@ -115,12 +115,6 @@ export default function Login() {
             </Link>
           </p>
 
-          {/* Compte démo */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 font-medium mb-2">Compte de démonstration :</p>
-            <p className="text-xs text-gray-600">Email : <span className="font-mono">admin@agri.com</span></p>
-            <p className="text-xs text-gray-600">Mot de passe : <span className="font-mono">Admin123!</span></p>
-          </div>
         </div>
       </div>
     </div>
