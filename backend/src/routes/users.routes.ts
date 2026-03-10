@@ -16,6 +16,33 @@ const updateSchema = z.object({
   role: z.enum(['ADMIN', 'ASSOCIATE', 'ACCOUNTANT', 'OBSERVER']).optional(),
 });
 
+// Création d'un utilisateur par un admin
+router.post('/', requireAdmin, async (req, res, next) => {
+  try {
+    const schema = z.object({
+      email: z.string().email('Email invalide'),
+      password: z.string().min(8, 'Minimum 8 caractères'),
+      firstName: z.string().min(1, 'Prénom requis'),
+      lastName: z.string().min(1, 'Nom requis'),
+      role: z.enum(['ADMIN', 'ASSOCIATE', 'ACCOUNTANT', 'OBSERVER']).default('ASSOCIATE'),
+    });
+    const data = schema.parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existing) throw new AppError('Cet email est déjà utilisé', 409);
+
+    const passwordHash = await bcrypt.hash(data.password, 12);
+    const user = await prisma.user.create({
+      data: { email: data.email, passwordHash, firstName: data.firstName, lastName: data.lastName, role: data.role },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, createdAt: true },
+    });
+
+    res.status(201).json(user);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', requireAdmin, async (_req, res, next) => {
   try {
     const users = await prisma.user.findMany({

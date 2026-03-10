@@ -5,6 +5,7 @@ import { prisma } from '../utils/prisma';
 import { signToken, signRefreshToken, verifyToken } from '../utils/jwt';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -45,7 +46,7 @@ const loginSchema = z.object({
  *       400: { description: Données invalides }
  *       409: { description: Email déjà utilisé }
  */
-router.post('/register', async (req, res, next) => {
+router.post('/register', authenticate, requireAdmin, async (req, res, next) => {
   try {
     const data = registerSchema.parse(req.body);
 

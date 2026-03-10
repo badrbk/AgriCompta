@@ -55,6 +55,7 @@ import ProjectSettings from './pages/Settings/ProjectSettings';
 import Associates from './pages/Settings/Associates';
 import Accounts from './pages/Settings/Accounts';
 import UserProfile from './pages/Settings/UserProfile';
+import UserManagement from './pages/Settings/UserManagement';
 import ProjectsPage from './pages/Projects/ProjectsPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -116,6 +117,7 @@ export default function App() {
           </Route>
           <Route path="accounts" element={<Accounts />} />
           <Route path="profile" element={<UserProfile />} />
+          <Route path="admin/users" element={<UserManagement />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

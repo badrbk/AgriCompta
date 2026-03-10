@@ -200,6 +200,7 @@ export const closureService = {
 export const userService = {
   getAll: () => api.get('/users'),
   getById: (id: string) => api.get(`/users/${id}`),
+  create: (data: object) => api.post('/users', data),
   updateProfile: (id: string, data: object) => api.put(`/users/${id}`, data),
   changePassword: (id: string, data: object) => api.put(`/users/${id}/password`, data),
   delete: (id: string) => api.delete(`/users/${id}`),

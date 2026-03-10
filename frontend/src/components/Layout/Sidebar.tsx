@@ -1,9 +1,10 @@
 import { NavLink, useParams } from 'react-router-dom';
 import { useProjectStore } from '../../store/projectStore';
+import { useAuthStore } from '../../store/authStore';
 import {
   LayoutDashboard, ArrowLeftRight, Building2, Beef, Sprout,
   Package, ShoppingCart, BarChart3, Lock, Settings, Leaf,
-  ChevronDown, ChevronRight, Users, BookOpen, X
+  ChevronDown, ChevronRight, Users, BookOpen, X, ShieldCheck
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../utils/cn';
@@ -23,6 +24,8 @@ interface NavItem {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const { projectId } = useParams<{ projectId: string }>();
   const currentProject = useProjectStore((s) => s.currentProject);
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'ADMIN';
   const [expandedReports, setExpandedReports] = useState(false);
   const [expandedCrops, setExpandedCrops] = useState(false);
 
@@ -215,7 +218,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           )}
 
           {/* Plan comptable - global */}
-          <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="mt-4 pt-4 border-t border-gray-200 space-y-1">
             <NavLink
               to="/accounts"
               className={({ isActive }) => cn(
@@ -226,6 +229,20 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               <BookOpen className="h-4 w-4 flex-shrink-0" />
               Plan comptable
             </NavLink>
+
+            {/* Gestion utilisateurs — Admin uniquement */}
+            {isAdmin && (
+              <NavLink
+                to="/admin/users"
+                className={({ isActive }) => cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  isActive ? 'bg-red-100 text-red-800' : 'text-gray-600 hover:bg-gray-100'
+                )}
+              >
+                <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                Utilisateurs
+              </NavLink>
+            )}
           </div>
         </nav>
       </aside>
