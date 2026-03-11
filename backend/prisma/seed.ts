@@ -157,6 +157,22 @@ async function main() {
   console.log('📋 Création du plan comptable...');
 
   const accounts = [
+    // CLASSE 1 - FINANCEMENT PERMANENT (Capital & Réserves)
+    { code: '11', name: 'Capitaux propres', classCode: '1', type: 'ASSET' as const },
+    { code: '1111', name: 'Capital social', classCode: '1', type: 'ASSET' as const },
+    { code: '1121', name: 'Réserves légales', classCode: '1', type: 'ASSET' as const },
+    { code: '1181', name: 'Report à nouveau', classCode: '1', type: 'ASSET' as const },
+    { code: '119', name: 'Résultats nets en instance d\'affectation', classCode: '1', type: 'ASSET' as const },
+    { code: '14', name: 'Dettes de financement', classCode: '1', type: 'ASSET' as const },
+    { code: '1481', name: 'Emprunts auprès d\'établissements de crédit', classCode: '1', type: 'ASSET' as const },
+
+    // CLASSE 4 - COMPTES DE TIERS
+    { code: '44', name: 'Comptes courants des associés', classCode: '4', type: 'ASSET' as const },
+    { code: '4461', name: 'Comptes courants associés - Apports en capital', classCode: '4', type: 'ASSET' as const },
+    { code: '4462', name: 'Comptes courants associés - Retraits', classCode: '4', type: 'ASSET' as const },
+    { code: '441', name: 'Fournisseurs', classCode: '4', type: 'ASSET' as const },
+    { code: '442', name: 'Clients', classCode: '4', type: 'ASSET' as const },
+
     // CLASSE 2 - IMMOBILISATIONS
     { code: '20', name: 'Immobilisations en non-valeurs', classCode: '2', type: 'ASSET' as const },
     { code: '21', name: 'Immobilisations incorporelles', classCode: '2', type: 'ASSET' as const },
