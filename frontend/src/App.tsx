@@ -50,6 +50,9 @@ import ClosuresList from './pages/Closures/ClosuresList';
 import ClosureForm from './pages/Closures/ClosureForm';
 import ClosureDetail from './pages/Closures/ClosureDetail';
 
+// Treasury
+import TreasuryPage from './pages/Treasury/TreasuryPage';
+
 // Settings
 import ProjectSettings from './pages/Settings/ProjectSettings';
 import Associates from './pages/Settings/Associates';
@@ -112,6 +115,7 @@ export default function App() {
             <Route path="closures" element={<ClosuresList />} />
             <Route path="closures/new" element={<ClosureForm />} />
             <Route path="closures/:id" element={<ClosureDetail />} />
+            <Route path="treasury" element={<TreasuryPage />} />
             <Route path="settings" element={<ProjectSettings />} />
             <Route path="settings/associates" element={<Associates />} />
           </Route>

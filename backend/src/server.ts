@@ -25,6 +25,7 @@ import stockRoutes from './routes/stocks.routes';
 import saleRoutes from './routes/sales.routes';
 import reportRoutes from './routes/reports.routes';
 import closureRoutes from './routes/closures.routes';
+import treasuryRoutes from './routes/treasury.routes';
 
 const app = express();
 const PORT = process.env.API_PORT || 3000;
@@ -90,6 +91,7 @@ app.use('/api', stockRoutes);
 app.use('/api', saleRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', closureRoutes);
+app.use('/api', treasuryRoutes);
 
 // Health check
 app.get('/health', async (_req, res) => {

@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import {
   LayoutDashboard, ArrowLeftRight, Building2, Beef, Sprout,
   Package, ShoppingCart, BarChart3, Lock, Settings, Leaf,
-  ChevronDown, ChevronRight, Users, BookOpen, X, ShieldCheck
+  ChevronDown, ChevronRight, Users, BookOpen, X, ShieldCheck, Wallet
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../utils/cn';
@@ -38,6 +38,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     { label: 'Cheptel', icon: Beef, path: `${projectBase}/livestock` },
     { label: 'Stocks', icon: Package, path: `${projectBase}/stocks` },
     { label: 'Ventes', icon: ShoppingCart, path: `${projectBase}/sales` },
+    { label: 'Trésorerie', icon: Wallet, path: `${projectBase}/treasury` },
     { label: 'Clôtures', icon: Lock, path: `${projectBase}/closures` },
   ];
 

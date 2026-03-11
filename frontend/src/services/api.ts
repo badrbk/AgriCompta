@@ -196,6 +196,18 @@ export const closureService = {
   distribute: (id: string, data: object) => api.post(`/closures/${id}/distribute`, data),
 };
 
+// Services Trésorerie
+export const treasuryService = {
+  getAccounts: (projectId: string) => api.get(`/projects/${projectId}/treasury`),
+  createAccount: (data: object) => api.post('/treasury/accounts', data),
+  updateAccount: (id: string, data: object) => api.put(`/treasury/accounts/${id}`, data),
+  deleteAccount: (id: string) => api.delete(`/treasury/accounts/${id}`),
+  getFlows: (accountId: string, params?: object) =>
+    api.get(`/treasury/accounts/${accountId}/flows`, { params }),
+  addFlow: (accountId: string, data: object) =>
+    api.post(`/treasury/accounts/${accountId}/flows`, data),
+};
+
 // Services Utilisateurs
 export const userService = {
   getAll: () => api.get('/users'),
