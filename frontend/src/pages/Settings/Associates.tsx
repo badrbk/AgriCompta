@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { associateService } from '../../services/api';
+import { associateService, userService } from '../../services/api';
+import { User } from '../../types';
 import PageHeader from '../../components/Layout/PageHeader';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Plus, Users, AlertCircle, Trash2, UserCheck, UserX } from 'lucide-react';
@@ -30,6 +31,7 @@ interface AssociateWithUser {
 export default function Associates() {
   const { projectId } = useParams<{ projectId: string }>();
   const [associates, setAssociates] = useState<AssociateWithUser[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
@@ -41,10 +43,21 @@ export default function Associates() {
 
   const load = async () => {
     if (!projectId) return;
-    associateService.getAll(projectId).then(res => setAssociates(res.data)).finally(() => setLoading(false));
+    const [assocRes, usersRes] = await Promise.all([
+      associateService.getAll(projectId),
+      userService.getAll(),
+    ]);
+    setAssociates(assocRes.data);
+    setUsers(usersRes.data);
+    setLoading(false);
   };
 
   useEffect(() => { load(); }, [projectId]);
+
+  // Utilisateurs pas encore associés à ce projet
+  const availableUsers = users.filter(
+    u => !associates.some(a => a.userId === u.id)
+  );
 
   const totalParticipation = associates.filter(a => a.isActive).reduce((sum, a) => sum + a.participationPercentage, 0);
   const totalCapital = associates.reduce((sum, a) => sum + a.initialContribution, 0);
@@ -124,14 +137,25 @@ export default function Associates() {
           )}
           <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">ID Utilisateur *</label>
-              <input
-                {...register('userId')}
-                placeholder="CUID de l'utilisateur (ex: clxxxxxxxxxxxxxxxx)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none font-mono"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Utilisateur *</label>
+              {availableUsers.length === 0 ? (
+                <div className="w-full px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-sm text-amber-700">
+                  Tous les utilisateurs sont déjà associés à ce projet, ou aucun utilisateur n'existe.
+                </div>
+              ) : (
+                <select
+                  {...register('userId')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+                >
+                  <option value="">— Sélectionner un utilisateur —</option>
+                  {availableUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName} ({u.email})
+                    </option>
+                  ))}
+                </select>
+              )}
               {errors.userId && <p className="mt-1 text-xs text-red-600">{errors.userId.message}</p>}
-              <p className="mt-1 text-xs text-gray-400">L'utilisateur doit d'abord avoir un compte dans le système.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Participation (%) *</label>
