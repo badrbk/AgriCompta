@@ -12,6 +12,7 @@ const associateSchema = z.object({
   participationPercentage: z.number().min(0).max(100),
   initialContribution: z.number().min(0).default(0),
   joinDate: z.string().transform(v => new Date(v)).optional(),
+  isActive: z.boolean().optional(),
 });
 
 router.get('/projects/:projectId/associates', async (req: AuthRequest, res, next) => {

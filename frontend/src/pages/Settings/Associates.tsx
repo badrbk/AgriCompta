@@ -7,7 +7,7 @@ import { associateService, userService } from '../../services/api';
 import { User } from '../../types';
 import PageHeader from '../../components/Layout/PageHeader';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Plus, Users, AlertCircle, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Plus, Users, AlertCircle, Trash2, UserCheck, UserX, Pencil, X } from 'lucide-react';
 
 const schema = z.object({
   userId: z.string().min(1, "L'identifiant utilisateur est requis"),
@@ -16,7 +16,13 @@ const schema = z.object({
   joinDate: z.string().optional(),
 });
 
+const editSchema = z.object({
+  participationPercentage: z.coerce.number().min(0.01, 'La participation doit être supérieure à 0').max(100),
+  initialContribution: z.coerce.number().min(0).default(0),
+});
+
 type FormData = z.infer<typeof schema>;
+type EditFormData = z.infer<typeof editSchema>;
 
 interface AssociateWithUser {
   id: string;
@@ -35,10 +41,21 @@ export default function Associates() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [editingAssociate, setEditingAssociate] = useState<AssociateWithUser | null>(null);
+  const [editError, setEditError] = useState('');
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { participationPercentage: 0, initialContribution: 0, joinDate: new Date().toISOString().split('T')[0] },
+  });
+
+  const {
+    register: registerEdit,
+    handleSubmit: handleSubmitEdit,
+    reset: resetEdit,
+    formState: { errors: editErrors, isSubmitting: isEditSubmitting },
+  } = useForm<EditFormData>({
+    resolver: zodResolver(editSchema),
   });
 
   const load = async () => {
@@ -71,6 +88,27 @@ export default function Associates() {
       reset();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors de l\'ajout de l\'associé');
+    }
+  };
+
+  const openEdit = (a: AssociateWithUser) => {
+    setEditingAssociate(a);
+    setEditError('');
+    resetEdit({
+      participationPercentage: a.participationPercentage,
+      initialContribution: a.initialContribution,
+    });
+  };
+
+  const onEditSubmit = async (data: EditFormData) => {
+    if (!editingAssociate) return;
+    setEditError('');
+    try {
+      await associateService.update(editingAssociate.id, data);
+      await load();
+      setEditingAssociate(null);
+    } catch (err: any) {
+      setEditError(err.response?.data?.message || 'Erreur lors de la modification');
     }
   };
 
@@ -199,6 +237,71 @@ export default function Associates() {
         </div>
       )}
 
+      {/* Edit modal */}
+      {editingAssociate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">
+                Modifier — {editingAssociate.user?.firstName} {editingAssociate.user?.lastName}
+              </h3>
+              <button onClick={() => setEditingAssociate(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />{editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitEdit(onEditSubmit)} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Participation (%) *</label>
+                <input
+                  {...registerEdit('participationPercentage')}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                {editErrors.participationPercentage && (
+                  <p className="mt-1 text-xs text-red-600">{editErrors.participationPercentage.message}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Apport initial (MAD)</label>
+                <input
+                  {...registerEdit('initialContribution')}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="flex-1 px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800 disabled:opacity-50"
+                >
+                  {isEditSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingAssociate(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Associates list */}
       {loading ? (
         <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-700" /></div>
@@ -239,6 +342,13 @@ export default function Associates() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(a)}
+                        title="Modifier les parts"
+                        className="p-1.5 text-gray-400 hover:text-blue-600 rounded"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => handleToggle(a.id, a.isActive)}
                         title={a.isActive ? 'Désactiver' : 'Réactiver'}
