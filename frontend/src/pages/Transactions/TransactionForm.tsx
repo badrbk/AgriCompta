@@ -3,13 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { transactionService, accountService } from '../../services/api';
+import {
+  transactionService, accountService,
+  associateService, treasuryService,
+} from '../../services/api';
 import { Account, TRANSACTION_TYPE_LABELS, PAYMENT_METHOD_LABELS } from '../../types';
 import PageHeader from '../../components/Layout/PageHeader';
 import { useProjectStore } from '../../store/projectStore';
-import { useAuthStore } from '../../store/authStore';
-import { ArrowLeft, Upload } from 'lucide-react';
+import { ArrowLeft, Upload, Info } from 'lucide-react';
 import { AxiosError } from 'axios';
+
+// Types qui génèrent un mouvement de trésorerie entrant
+const TREASURY_IN_TYPES = ['SALE', 'CAPITAL_CONTRIBUTION'];
+// Types qui impliquent un associé
+const ASSOCIATE_TYPES = ['CAPITAL_CONTRIBUTION', 'DISTRIBUTION'];
 
 const schema = z.object({
   accountId: z.string().min(1, 'Le compte est requis'),
@@ -21,16 +28,34 @@ const schema = z.object({
   description: z.string().min(1, 'La description est requise'),
   paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'CREDIT']),
   documentReference: z.string().optional(),
+  cashAccountId: z.string().optional(),
+  paidByAssociateId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
+
+interface Associate {
+  id: string;
+  userId: string;
+  participationPercentage: number;
+  isActive: boolean;
+  user: { firstName: string; lastName: string; email: string };
+}
+
+interface CashAccount {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+}
 
 export default function TransactionForm() {
   const { projectId, id } = useParams<{ projectId: string; id: string }>();
   const navigate = useNavigate();
   const { currentProject } = useProjectStore();
-  const { user } = useAuthStore();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [associates, setAssociates] = useState<Associate[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [apiError, setApiError] = useState('');
   const isEdit = !!id;
@@ -45,11 +70,24 @@ export default function TransactionForm() {
   });
 
   const selectedType = watch('type');
-  const quantity = watch('quantity');
+  const cashAccountId = watch('cashAccountId');
   const amount = watch('amount');
 
+  const showAssociateField = ASSOCIATE_TYPES.includes(selectedType);
+  const showTreasuryField = true; // Toujours disponible pour lier à un compte de trésorerie
+
   useEffect(() => {
+    // Charger comptes comptables
     accountService.getAll().then(res => setAccounts(res.data));
+
+    // Charger associés et comptes de trésorerie
+    if (projectId) {
+      associateService.getAll(projectId)
+        .then(res => setAssociates((res.data as Associate[]).filter(a => a.isActive)));
+      treasuryService.getAccounts(projectId)
+        .then(res => setCashAccounts(res.data.accounts));
+    }
+
     if (isEdit && id) {
       transactionService.getById(id).then(res => {
         const tx = res.data;
@@ -62,11 +100,16 @@ export default function TransactionForm() {
         setValue('description', tx.description);
         setValue('paymentMethod', tx.paymentMethod);
         setValue('documentReference', tx.documentReference);
+        setValue('paidByAssociateId', tx.paidByAssociateId ?? '');
+        // cashFlows linked account
+        if (tx.cashFlows?.length > 0) {
+          setValue('cashAccountId', tx.cashFlows[0].cashAccountId);
+        }
       });
     }
   }, []);
 
-  // Filtrer les comptes selon le type de transaction
+  // Filtrer les comptes comptables selon le type de transaction
   const filteredAccounts = accounts.filter(acc => {
     if (['SALE'].includes(selectedType)) return acc.type === 'REVENUE';
     if (['EXPENSE'].includes(selectedType)) return acc.type === 'EXPENSE';
@@ -75,27 +118,41 @@ export default function TransactionForm() {
     return true;
   });
 
+  // Solde prévu après opération sur le compte de trésorerie sélectionné
+  const selectedCashAccount = cashAccounts.find(a => a.id === cashAccountId);
+  const projectedBalance = selectedCashAccount && amount > 0
+    ? TREASURY_IN_TYPES.includes(selectedType)
+      ? selectedCashAccount.balance + amount
+      : selectedCashAccount.balance - amount
+    : null;
+
   const onSubmit = async (data: FormData) => {
     try {
       setApiError('');
-      let txId = id;
+      // Nettoyer les champs vides
+      const payload = {
+        ...data,
+        projectId,
+        cashAccountId: data.cashAccountId || undefined,
+        paidByAssociateId: data.paidByAssociateId || undefined,
+      };
 
+      let txId = id;
       if (isEdit && id) {
-        await transactionService.update(id, data);
+        await transactionService.update(id, payload);
       } else {
-        const res = await transactionService.create({ ...data, projectId });
+        const res = await transactionService.create(payload);
         txId = res.data.id;
       }
 
-      // Upload pièce justificative
       if (file && txId) {
         await transactionService.uploadAttachment(txId, file);
       }
 
       navigate(`/projects/${projectId}/transactions`);
     } catch (err) {
-      const error = err as AxiosError<{ error: string }>;
-      setApiError(error.response?.data?.error || 'Erreur lors de l\'enregistrement');
+      const error = err as AxiosError<{ error: string; message: string }>;
+      setApiError(error.response?.data?.message || error.response?.data?.error || 'Erreur lors de l\'enregistrement');
     }
   };
 
@@ -122,6 +179,7 @@ export default function TransactionForm() {
             </div>
           )}
 
+          {/* Date + Type */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
@@ -146,6 +204,18 @@ export default function TransactionForm() {
             </div>
           </div>
 
+          {/* Banderole d'aide pour apport associé */}
+          {selectedType === 'CAPITAL_CONTRIBUTION' && (
+            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>
+                Pour enregistrer l'apport d'un associé : sélectionnez l'associé concerné
+                et le compte de trésorerie qui reçoit les fonds. Le solde sera mis à jour automatiquement.
+              </span>
+            </div>
+          )}
+
+          {/* Compte comptable */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Compte comptable *</label>
             <select
@@ -160,17 +230,81 @@ export default function TransactionForm() {
             {errors.accountId && <p className="mt-1 text-xs text-red-600">{errors.accountId.message}</p>}
           </div>
 
+          {/* Associé apporteur — visible pour CAPITAL_CONTRIBUTION et DISTRIBUTION */}
+          {showAssociateField && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {selectedType === 'CAPITAL_CONTRIBUTION' ? 'Associé apporteur' : 'Associé concerné'}
+              </label>
+              {associates.length === 0 ? (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Aucun associé actif trouvé pour ce projet.
+                </p>
+              ) : (
+                <select
+                  {...register('paidByAssociateId')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+                >
+                  <option value="">— Sélectionner un associé (optionnel) —</option>
+                  {associates.map(a => (
+                    <option key={a.userId} value={a.userId}>
+                      {a.user.firstName} {a.user.lastName} ({a.participationPercentage}%)
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Compte de trésorerie */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Compte de trésorerie
+              <span className="ml-1 text-xs font-normal text-gray-400">(optionnel — met à jour le solde automatiquement)</span>
+            </label>
+            {cashAccounts.length === 0 ? (
+              <p className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                Aucun compte de trésorerie — créez-en un dans la section Trésorerie.
+              </p>
+            ) : (
+              <select
+                {...register('cashAccountId')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+              >
+                <option value="">— Ne pas lier à la trésorerie —</option>
+                {cashAccounts.map(ca => (
+                  <option key={ca.id} value={ca.id}>
+                    {ca.name} — solde : {new Intl.NumberFormat('fr-MA').format(ca.balance)} DH
+                  </option>
+                ))}
+              </select>
+            )}
+            {/* Aperçu du solde après */}
+            {projectedBalance !== null && (
+              <p className={`mt-1 text-xs font-medium ${projectedBalance < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                Solde après opération : {new Intl.NumberFormat('fr-MA').format(projectedBalance)} DH
+                {projectedBalance < 0 && ' ⚠️ Solde insuffisant'}
+              </p>
+            )}
+          </div>
+
+          {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
             <textarea
               {...register('description')}
               rows={2}
-              placeholder="Décrivez cette transaction..."
+              placeholder={
+                selectedType === 'CAPITAL_CONTRIBUTION'
+                  ? 'Ex: Apport en capital — tranche 1, Versement compte agricole...'
+                  : 'Décrivez cette transaction...'
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
             />
             {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description.message}</p>}
           </div>
 
+          {/* Montant + Quantité + Unité */}
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Montant ({currentProject?.currency || 'MAD'}) *</label>
@@ -205,6 +339,7 @@ export default function TransactionForm() {
             </div>
           </div>
 
+          {/* Mode paiement + Référence */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mode de paiement</label>
@@ -227,7 +362,7 @@ export default function TransactionForm() {
             </div>
           </div>
 
-          {/* Upload pièce justificative */}
+          {/* Pièce justificative */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Pièce justificative</label>
             <label className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors">
@@ -244,6 +379,7 @@ export default function TransactionForm() {
             </label>
           </div>
 
+          {/* Boutons */}
           <div className="flex gap-3 pt-2 border-t border-gray-100">
             <button
               type="submit"
