@@ -41,8 +41,10 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const CLASS_DESCRIPTIONS: Record<string, string> = {
+  '1': 'Classe 1 - Comptes de financement permanent',
   '2': 'Classe 2 - Comptes d\'immobilisations',
   '3': 'Classe 3 - Comptes de stocks',
+  '4': 'Classe 4 - Comptes de tiers',
   '5': 'Classe 5 - Comptes de trésorerie',
   '6': 'Classe 6 - Comptes de charges',
   '7': 'Classe 7 - Comptes de produits',
