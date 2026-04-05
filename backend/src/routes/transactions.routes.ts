@@ -70,32 +70,33 @@ router.get('/projects/:projectId/transactions', async (req: AuthRequest, res, ne
 router.post('/transactions', async (req: AuthRequest, res, next) => {
   try {
     const data = transactionSchema.parse(req.body);
+    const { cashAccountId, ...transactionData } = data;
 
     const transaction = await prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
         data: {
-          ...data,
+          ...transactionData,
           createdByUserId: req.user!.userId,
         },
         include: { account: true },
       });
 
       // Créer le flux de trésorerie si un compte de caisse est spécifié
-      if (data.cashAccountId) {
-        const account = await tx.cashAccount.findUnique({ where: { id: data.cashAccountId } });
+      if (cashAccountId) {
+        const account = await tx.cashAccount.findUnique({ where: { id: cashAccountId } });
         if (account) {
           const isIn = ['SALE', 'CAPITAL_CONTRIBUTION'].includes(data.type);
           const newBalance = isIn ? account.balance + data.amount : account.balance - data.amount;
 
           await tx.cashAccount.update({
-            where: { id: data.cashAccountId },
+            where: { id: cashAccountId },
             data: { balance: newBalance },
           });
 
           await tx.cashFlow.create({
             data: {
               transactionId: created.id,
-              cashAccountId: data.cashAccountId,
+              cashAccountId: cashAccountId,
               date: data.date,
               type: isIn ? 'IN' : 'OUT',
               amount: data.amount,
@@ -134,10 +135,11 @@ router.get('/transactions/:id', async (req, res, next) => {
 
 router.put('/transactions/:id', async (req: AuthRequest, res, next) => {
   try {
-    const data = transactionSchema.partial().parse(req.body);
+    const parsed = transactionSchema.partial().parse(req.body);
+    const { cashAccountId: _cashId, ...updateData } = parsed;
     const transaction = await prisma.transaction.update({
       where: { id: req.params.id },
-      data,
+      data: updateData,
       include: { account: true },
     });
     res.json(transaction);
