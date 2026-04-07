@@ -7,6 +7,7 @@ import ConfirmDialog from '../../components/Modals/ConfirmDialog';
 import { formatCurrency, formatDate, getStatusColor } from '../../utils/formatters';
 import { Plus, Trash2, Edit, Paperclip, Filter, Search } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
+import { useAuthStore } from '../../store/authStore';
 import { TRANSACTION_TYPE_LABELS, PAYMENT_METHOD_LABELS } from '../../types';
 
 const TYPE_COLORS: Record<string, string> = {
@@ -23,6 +24,7 @@ export default function TransactionsList() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { currentProject } = useProjectStore();
+  const { token } = useAuthStore();
   const [response, setResponse] = useState<PaginatedResponse<Transaction> | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -139,7 +141,7 @@ export default function TransactionsList() {
                         <span className="text-gray-900 font-medium">{tx.description}</span>
                         {tx.attachmentUrl && (
                           <a
-                            href={tx.attachmentUrl}
+                            href={`${tx.attachmentUrl}${token ? `?token=${encodeURIComponent(token)}` : ''}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-gray-400 hover:text-green-700"

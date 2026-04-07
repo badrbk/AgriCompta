@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_change_in_production';
-const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '7d';
+const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '15m';
 
 export interface JwtPayload {
   userId: string;

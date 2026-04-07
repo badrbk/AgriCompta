@@ -10,6 +10,7 @@ import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { swaggerSpec } from './utils/swagger';
 import { prisma } from './utils/prisma';
+import { verifyToken } from './utils/jwt';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -52,8 +53,27 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Fichiers statiques (uploads)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Fichiers statiques (uploads) — protégés par authentification
+const uploadsAuth = (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+  const authHeader = req.headers.authorization;
+  let token: string | undefined;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+  if (!token) {
+    res.status(401).json({ error: 'Authentification requise' });
+    return;
+  }
+  try {
+    verifyToken(token);
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token invalide ou expiré' });
+  }
+};
+app.use('/uploads', uploadsAuth, express.static(path.join(__dirname, '../uploads')));
 
 // Rate limiting
 const limiter = rateLimit({
