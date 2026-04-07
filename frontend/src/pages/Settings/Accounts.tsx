@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { accountService } from '../../services/api';
 import PageHeader from '../../components/Layout/PageHeader';
-import { Plus, ChevronRight, ChevronDown, BookOpen } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, BookOpen, Pencil, Trash2 } from 'lucide-react';
 
 interface Account {
   id: string;
@@ -13,6 +13,7 @@ interface Account {
   classCode: string;
   type: 'ASSET' | 'STOCK' | 'EXPENSE' | 'REVENUE';
   isActive: boolean;
+  parentAccountId?: string | null;
   children?: Account[];
 }
 
@@ -50,14 +51,24 @@ const CLASS_DESCRIPTIONS: Record<string, string> = {
   '7': 'Classe 7 - Comptes de produits',
 };
 
-function AccountNode({ account, level = 0 }: { account: Account; level?: number }) {
+function AccountNode({
+  account,
+  level = 0,
+  onEdit,
+  onDelete,
+}: {
+  account: Account;
+  level?: number;
+  onEdit: (a: Account) => void;
+  onDelete: (a: Account) => void;
+}) {
   const [expanded, setExpanded] = useState(level < 1);
   const hasChildren = account.children && account.children.length > 0;
 
   return (
     <div>
       <div
-        className={`flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-50 cursor-default ${!account.isActive ? 'opacity-50' : ''}`}
+        className={`group flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-gray-50 ${!account.isActive ? 'opacity-50' : ''}`}
         style={{ paddingLeft: `${(level * 20) + 12}px` }}
       >
         {hasChildren ? (
@@ -72,11 +83,27 @@ function AccountNode({ account, level = 0 }: { account: Account; level?: number 
         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[account.type]}`}>
           {TYPE_LABELS[account.type]}
         </span>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onEdit(account)}
+            className="p-1 text-gray-400 hover:text-green-700 hover:bg-green-50 rounded"
+            title="Modifier"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(account)}
+            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+            title="Supprimer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {expanded && hasChildren && (
         <div>
           {account.children!.map(child => (
-            <AccountNode key={child.id} account={child} level={level + 1} />
+            <AccountNode key={child.id} account={child} level={level + 1} onEdit={onEdit} onDelete={onDelete} />
           ))}
         </div>
       )}
@@ -88,14 +115,13 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
   const [filter, setFilter] = useState('');
 
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { type: 'EXPENSE', classCode: '6' },
   });
-
-  const watchType = watch('type');
 
   const load = async () => {
     accountService.getTree().then(res => setAccounts(res.data)).finally(() => setLoading(false));
@@ -103,16 +129,49 @@ export default function Accounts() {
 
   useEffect(() => { load(); }, []);
 
-  // Set class code based on type
-  useEffect(() => {
-    const typeToClass: Record<string, string> = { ASSET: '2', STOCK: '3', EXPENSE: '6', REVENUE: '7' };
-  }, [watchType]);
+  const openCreate = () => {
+    setEditing(null);
+    reset({ code: '', name: '', type: 'EXPENSE', classCode: '6', parentAccountId: '' });
+    setShowForm(true);
+  };
+
+  const openEdit = (a: Account) => {
+    setEditing(a);
+    reset({
+      code: a.code,
+      name: a.name,
+      classCode: a.classCode,
+      type: a.type,
+      parentAccountId: a.parentAccountId || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (a: Account) => {
+    if (!window.confirm(`Supprimer le compte "${a.code} - ${a.name}" ?\n\nLe compte sera désactivé. Si des transactions y sont liées, la suppression sera refusée.`)) return;
+    try {
+      await accountService.delete(a.id);
+      await load();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.response?.data?.message || 'Erreur lors de la suppression');
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
-    await accountService.create(data);
-    await load();
-    setShowForm(false);
-    reset();
+    try {
+      const payload = { ...data, parentAccountId: data.parentAccountId || undefined };
+      if (editing) {
+        await accountService.update(editing.id, payload);
+      } else {
+        await accountService.create(payload);
+      }
+      await load();
+      setShowForm(false);
+      setEditing(null);
+      reset();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.response?.data?.message || 'Erreur lors de l\'enregistrement');
+    }
   };
 
   const flatAccounts = (accs: Account[]): Account[] => {
@@ -124,7 +183,6 @@ export default function Accounts() {
     ? allFlat.filter(a => a.code.includes(filter) || a.name.toLowerCase().includes(filter.toLowerCase()))
     : [];
 
-  // Group root accounts by class
   const grouped = accounts.reduce<Record<string, Account[]>>((g, a) => {
     const cls = a.classCode || a.code[0] || 'X';
     if (!g[cls]) g[cls] = [];
@@ -138,13 +196,12 @@ export default function Accounts() {
         title="Plan Comptable"
         description="Gestion des comptes du plan comptable marocain agricole"
         actions={
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800">
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800">
             <Plus className="h-4 w-4" />Nouveau compte
           </button>
         }
       />
 
-      {/* Search */}
       <div className="mb-5">
         <input
           type="text"
@@ -155,10 +212,9 @@ export default function Accounts() {
         />
       </div>
 
-      {/* Add form */}
       {showForm && (
         <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl">
-          <h3 className="font-semibold text-gray-900 mb-4">Nouveau compte</h3>
+          <h3 className="font-semibold text-gray-900 mb-4">{editing ? `Modifier le compte ${editing.code}` : 'Nouveau compte'}</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Code *</label>
@@ -208,16 +264,16 @@ export default function Accounts() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">Aucun (compte racine)</option>
-                {allFlat.map(a => (
+                {allFlat.filter(a => !editing || a.id !== editing.id).map(a => (
                   <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
                 ))}
               </select>
             </div>
             <div className="col-span-2 flex gap-3">
               <button type="submit" disabled={isSubmitting} className="px-6 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800 disabled:opacity-50">
-                {isSubmitting ? 'Création...' : 'Créer'}
+                {isSubmitting ? 'Enregistrement...' : (editing ? 'Mettre à jour' : 'Créer')}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); reset(); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+              <button type="button" onClick={() => { setShowForm(false); setEditing(null); reset(); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
                 Annuler
               </button>
             </div>
@@ -228,19 +284,26 @@ export default function Accounts() {
       {loading ? (
         <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-700" /></div>
       ) : filter ? (
-        /* Search results */
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
             <p className="text-sm text-gray-600">{filteredFlat.length} résultat(s) pour "{filter}"</p>
           </div>
           <div className="divide-y divide-gray-100">
             {filteredFlat.map(a => (
-              <div key={a.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
+              <div key={a.id} className="group flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
                 <span className="font-mono text-xs text-gray-400 w-14">{a.code}</span>
                 <span className="text-sm text-gray-800 flex-1">{a.name}</span>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[a.type]}`}>
                   {TYPE_LABELS[a.type]}
                 </span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openEdit(a)} className="p-1 text-gray-400 hover:text-green-700 hover:bg-green-50 rounded" title="Modifier">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => handleDelete(a)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Supprimer">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -252,7 +315,6 @@ export default function Accounts() {
           <p className="text-gray-400 text-sm mt-1">Initialisez le plan comptable avec les données de démonstration</p>
         </div>
       ) : (
-        /* Tree view grouped by class */
         <div className="space-y-4">
           {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([cls, accs]) => (
             <div key={cls} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -260,7 +322,7 @@ export default function Accounts() {
                 <h3 className="font-semibold text-gray-800 text-sm">{CLASS_DESCRIPTIONS[cls] || `Classe ${cls}`}</h3>
               </div>
               <div className="p-2">
-                {accs.map(a => <AccountNode key={a.id} account={a} />)}
+                {accs.map(a => <AccountNode key={a.id} account={a} onEdit={openEdit} onDelete={handleDelete} />)}
               </div>
             </div>
           ))}

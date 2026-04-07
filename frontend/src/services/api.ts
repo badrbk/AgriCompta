@@ -87,6 +87,7 @@ export const accountService = {
   getChart: () => api.get('/accounts/chart'),
   create: (data: object) => api.post('/accounts', data),
   update: (id: string, data: object) => api.put(`/accounts/${id}`, data),
+  delete: (id: string) => api.delete(`/accounts/${id}`),
 };
 
 // Services Transactions
