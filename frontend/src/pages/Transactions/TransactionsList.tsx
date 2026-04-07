@@ -137,7 +137,18 @@ export default function TransactionsList() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-gray-900 font-medium">{tx.description}</span>
-                        {tx.attachmentUrl && <Paperclip className="h-3 w-3 text-gray-400" />}
+                        {tx.attachmentUrl && (
+                          <a
+                            href={tx.attachmentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-400 hover:text-green-700"
+                            title="Voir la pièce jointe"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <Paperclip className="h-3.5 w-3.5" />
+                          </a>
+                        )}
                       </div>
                       {tx.documentReference && (
                         <p className="text-xs text-gray-400">Réf: {tx.documentReference}</p>
