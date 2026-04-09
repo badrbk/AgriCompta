@@ -30,6 +30,13 @@ const schema = z.object({
   documentReference: z.string().optional(),
   cashAccountId: z.string().optional(),
   paidByAssociateId: z.string().optional(),
+  assetName: z.string().optional(),
+  assetCategory: z.enum(['LAND', 'BUILDING', 'EQUIPMENT', 'VEHICLE', 'LIVESTOCK', 'INSTALLATION']).optional(),
+  assetDepreciationMethod: z.enum(['LINEAR', 'DECLINING', 'NONE']).optional(),
+  assetUsefulLifeYears: z.number().int().positive().optional(),
+  assetResidualValue: z.number().min(0).optional(),
+  assetLocation: z.string().optional(),
+  assetSerialNumber: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -129,13 +136,40 @@ export default function TransactionForm() {
   const onSubmit = async (data: FormData) => {
     try {
       setApiError('');
+
+      // Validation spécifique immobilisation
+      if (!isEdit && data.type === 'CAPITAL_ACQUISITION') {
+        if (!data.assetName || !data.assetCategory) {
+          setApiError('Le nom et la catégorie de l\'immobilisation sont requis');
+          return;
+        }
+      }
+
+      const {
+        assetName, assetCategory, assetDepreciationMethod,
+        assetUsefulLifeYears, assetResidualValue, assetLocation, assetSerialNumber,
+        ...txData
+      } = data;
+
       // Nettoyer les champs vides
-      const payload = {
-        ...data,
+      const payload: Record<string, unknown> = {
+        ...txData,
         projectId,
-        cashAccountId: data.cashAccountId || undefined,
-        paidByAssociateId: data.paidByAssociateId || undefined,
+        cashAccountId: txData.cashAccountId || undefined,
+        paidByAssociateId: txData.paidByAssociateId || undefined,
       };
+
+      if (!isEdit && txData.type === 'CAPITAL_ACQUISITION' && assetName && assetCategory) {
+        payload.asset = {
+          name: assetName,
+          category: assetCategory,
+          depreciationMethod: assetDepreciationMethod || 'LINEAR',
+          usefulLifeYears: assetUsefulLifeYears || undefined,
+          residualValue: assetResidualValue || undefined,
+          location: assetLocation || undefined,
+          serialNumber: assetSerialNumber || undefined,
+        };
+      }
 
       let txId = id;
       if (isEdit && id) {
@@ -229,6 +263,92 @@ export default function TransactionForm() {
             </select>
             {errors.accountId && <p className="mt-1 text-xs text-red-600">{errors.accountId.message}</p>}
           </div>
+
+          {/* Sous-formulaire Immobilisation — visible pour CAPITAL_ACQUISITION */}
+          {selectedType === 'CAPITAL_ACQUISITION' && !isEdit && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-4">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-purple-700" />
+                <p className="text-sm text-purple-800">
+                  Une immobilisation sera créée automatiquement avec cette transaction. Renseignez ses caractéristiques pour le calcul d'amortissement.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l'immobilisation *</label>
+                  <input
+                    {...register('assetName')}
+                    placeholder="Ex: Tracteur John Deere 5075E"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+                  <select
+                    {...register('assetCategory')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  >
+                    <option value="">Sélectionner...</option>
+                    <option value="LAND">Terrain</option>
+                    <option value="BUILDING">Bâtiment</option>
+                    <option value="EQUIPMENT">Équipement / Matériel</option>
+                    <option value="VEHICLE">Véhicule</option>
+                    <option value="LIVESTOCK">Cheptel reproducteur</option>
+                    <option value="INSTALLATION">Installation</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Méthode d'amortissement</label>
+                  <select
+                    {...register('assetDepreciationMethod')}
+                    defaultValue="LINEAR"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  >
+                    <option value="LINEAR">Linéaire</option>
+                    <option value="DECLINING">Dégressif</option>
+                    <option value="NONE">Aucun (non amortissable)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Durée de vie (années)</label>
+                  <input
+                    {...register('assetUsefulLifeYears', { valueAsNumber: true })}
+                    type="number"
+                    min="1"
+                    placeholder="Ex: 5"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Valeur résiduelle ({currentProject?.currency || 'MAD'})</label>
+                  <input
+                    {...register('assetResidualValue', { valueAsNumber: true })}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Emplacement</label>
+                  <input
+                    {...register('assetLocation')}
+                    placeholder="Ex: Parcelle nord"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">N° de série</label>
+                  <input
+                    {...register('assetSerialNumber')}
+                    placeholder="Optionnel"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Associé apporteur — visible pour CAPITAL_CONTRIBUTION et DISTRIBUTION */}
           {showAssociateField && (

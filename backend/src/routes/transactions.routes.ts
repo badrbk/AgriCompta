@@ -10,6 +10,17 @@ import { logger } from '../utils/logger';
 const router = Router();
 router.use(authenticate);
 
+const assetSubSchema = z.object({
+  name: z.string().min(1, 'Le nom de l\'immobilisation est requis'),
+  category: z.enum(['LAND', 'BUILDING', 'EQUIPMENT', 'VEHICLE', 'LIVESTOCK', 'INSTALLATION']),
+  depreciationMethod: z.enum(['LINEAR', 'DECLINING', 'NONE']).default('LINEAR'),
+  usefulLifeYears: z.number().int().positive().optional(),
+  residualValue: z.number().min(0).optional(),
+  location: z.string().optional(),
+  serialNumber: z.string().optional(),
+  notes: z.string().optional(),
+});
+
 const transactionSchema = z.object({
   projectId: z.string(),
   accountId: z.string(),
@@ -23,6 +34,7 @@ const transactionSchema = z.object({
   documentReference: z.string().optional(),
   paidByAssociateId: z.string().optional(),
   cashAccountId: z.string().optional(),
+  asset: assetSubSchema.optional(),
 });
 
 router.get('/projects/:projectId/transactions', async (req: AuthRequest, res, next) => {
@@ -70,7 +82,7 @@ router.get('/projects/:projectId/transactions', async (req: AuthRequest, res, ne
 router.post('/transactions', async (req: AuthRequest, res, next) => {
   try {
     const data = transactionSchema.parse(req.body);
-    const { cashAccountId, ...transactionData } = data;
+    const { cashAccountId, asset, ...transactionData } = data;
 
     const transaction = await prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
@@ -80,6 +92,28 @@ router.post('/transactions', async (req: AuthRequest, res, next) => {
         },
         include: { account: true },
       });
+
+      // Créer l'immobilisation si type=CAPITAL_ACQUISITION et données asset fournies
+      if (data.type === 'CAPITAL_ACQUISITION' && asset) {
+        await tx.asset.create({
+          data: {
+            projectId: data.projectId,
+            accountId: data.accountId,
+            name: asset.name,
+            category: asset.category,
+            acquisitionDate: data.date,
+            acquisitionValue: data.amount,
+            currentValue: data.amount,
+            depreciationMethod: asset.depreciationMethod,
+            usefulLifeYears: asset.usefulLifeYears,
+            residualValue: asset.residualValue,
+            location: asset.location,
+            serialNumber: asset.serialNumber,
+            notes: asset.notes,
+            status: 'ACTIVE',
+          },
+        });
+      }
 
       // Créer le flux de trésorerie si un compte de caisse est spécifié
       if (cashAccountId) {
@@ -136,7 +170,7 @@ router.get('/transactions/:id', async (req, res, next) => {
 router.put('/transactions/:id', async (req: AuthRequest, res, next) => {
   try {
     const parsed = transactionSchema.partial().parse(req.body);
-    const { cashAccountId: _cashId, ...updateData } = parsed;
+    const { cashAccountId: _cashId, asset: _asset, ...updateData } = parsed;
     const transaction = await prisma.transaction.update({
       where: { id: req.params.id },
       data: updateData,
